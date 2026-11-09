@@ -1,0 +1,199 @@
+<!doctype html>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>Office Sniper</title>
+<script src="https://telegram.org/js/telegram-web-app.js"></script>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Russo+One&family=Onest:wght@400;600;800&display=swap">
+<style>
+/* Layout: full-bleed office scene on canvas, HUD pinned top and bottom, overlays centered. Same look as Black Arena: daylight scene under dark glass panels. */
+:root{
+  --sky:#bfe0f0;
+  --ink:#f2f4ff;
+  --dim:#a9aed0;
+  --plasma:#ff8a3d;
+  --ion:#5fd6ff;
+  --good:#7dff8a;
+  --bad:#ff5d6c;
+  --panel:rgba(16,18,38,.78);
+  --line:rgba(160,170,240,.22);
+  --display:'Russo One','Arial Black',system-ui,sans-serif;
+  --body:'Onest',system-ui,-apple-system,'Segoe UI',sans-serif;
+  color-scheme:dark;
+}
+[hidden]{display:none!important}
+html,body{height:100%;margin:0;background:#10122a;color:var(--ink);font-family:var(--body);overflow:hidden;touch-action:none;-webkit-user-select:none;user-select:none;overscroll-behavior:none;-webkit-touch-callout:none}
+#game{position:fixed;inset:0;width:100%;height:100%;display:block}
+.hud{position:fixed;z-index:2;pointer-events:none}
+.pnl{background:var(--panel);border:1px solid var(--line);border-radius:10px}
+.lbl{font-size:10px;letter-spacing:.14em;text-transform:uppercase;color:var(--dim)}
+
+#top{top:calc(10px + env(safe-area-inset-top,0px));left:calc(10px + env(safe-area-inset-left,0px));right:calc(10px + env(safe-area-inset-right,0px));display:grid;grid-template-columns:1fr auto 1fr;gap:8px;align-items:start}
+#scoreBox{padding:7px 11px;display:grid;gap:1px;justify-self:start;min-width:92px}
+#score{font-family:var(--display);font-size:26px;line-height:1;font-variant-numeric:tabular-nums}
+#bestLine{font-size:11px;color:var(--dim);font-variant-numeric:tabular-nums}
+#locBox{padding:7px 12px;display:grid;gap:5px;justify-items:center;text-align:center}
+#locName{font-family:var(--display);font-size:14px;white-space:nowrap}
+#dots{display:flex;gap:4px}
+#dots i{width:9px;height:9px;border-radius:3px;background:rgba(255,255,255,.14)}
+#dots i.on{background:linear-gradient(135deg,var(--ion),var(--plasma))}
+#lives{font-size:13px;letter-spacing:2px;line-height:1}
+#lives b{color:var(--bad)} #lives s{color:rgba(255,255,255,.2);text-decoration:none}
+#rightCol{justify-self:end;display:grid;gap:6px;justify-items:end}
+#coinBox{padding:7px 11px;display:flex;align-items:center;gap:7px}
+#coins{font-family:var(--display);font-size:18px;font-variant-numeric:tabular-nums}
+.coin{display:inline-block;width:16px;height:16px;border-radius:50%;background:radial-gradient(circle at 35% 35%,#fff3b0,#ffc83d 45%,#c98a12);box-shadow:inset 0 0 0 2px rgba(120,70,0,.35)}
+#tools{display:flex;gap:6px;pointer-events:auto}
+.icon{width:38px;height:38px;border-radius:10px;border:1px solid var(--line);background:var(--panel);color:var(--ink);display:grid;place-items:center;cursor:pointer;padding:0}
+.icon svg{width:20px;height:20px;fill:currentColor}
+.icon:focus-visible{outline:2px solid var(--ion);outline-offset:2px}
+.icon.lang{width:auto;padding:0 10px;font:600 12px var(--body);letter-spacing:.04em;color:var(--dim);white-space:nowrap}
+.icon.lang b{color:var(--ink)}
+
+#wind{top:calc(118px + env(safe-area-inset-top,0px));left:50%;transform:translateX(-50%);padding:5px 12px;border-radius:999px;display:flex;align-items:center;gap:8px;white-space:nowrap}
+#windVal{font-family:var(--display);font-size:16px;font-variant-numeric:tabular-nums}
+#windVal.calm{color:var(--good)}
+#mult{top:calc(118px + env(safe-area-inset-top,0px));left:calc(10px + env(safe-area-inset-left,0px));padding:5px 11px;border-radius:999px;font-family:var(--display);font-size:16px;transition:transform .15s}
+#mult.hot{color:var(--plasma);border-color:rgba(255,138,61,.6)}
+#mult.pop{transform:scale(1.25)}
+#effects{top:calc(156px + env(safe-area-inset-top,0px));left:50%;transform:translateX(-50%);display:flex;gap:6px}
+#effects span{font-size:11px;font-weight:600;padding:3px 9px;border-radius:999px;background:rgba(95,214,255,.18);border:1px solid var(--line);white-space:nowrap}
+
+#smash{position:fixed;z-index:3;right:calc(12px + env(safe-area-inset-right,0px));bottom:calc(112px + env(safe-area-inset-bottom,0px));width:72px;height:72px;border-radius:50%;border:0;padding:0;cursor:pointer;background:conic-gradient(var(--plasma) calc(var(--p,0)*1%),rgba(255,255,255,.12) 0);display:grid;place-items:center}
+#smash span{width:62px;height:62px;border-radius:50%;background:#171a35;display:grid;place-items:center;font:11px var(--display);color:var(--dim);letter-spacing:.04em;line-height:1.1;text-align:center}
+#smash.ready span{background:radial-gradient(circle,#ff9a52,#d4521a);color:#1a0b00}
+#smash.ready{animation:pulse 1s ease-in-out infinite}
+#smash.armed span{background:radial-gradient(circle,#ffd166,#ff6a3d);color:#1a0b00}
+#smash:focus-visible{outline:3px solid var(--ion);outline-offset:3px}
+@keyframes pulse{0%,100%{transform:scale(1)}50%{transform:scale(1.08)}}
+
+#pups{position:fixed;z-index:3;left:50%;transform:translateX(-50%);bottom:calc(14px + env(safe-area-inset-bottom,0px));display:flex;gap:8px;padding:7px;border-radius:14px;background:var(--panel);border:1px solid var(--line)}
+.pu{position:relative;width:54px;height:54px;border-radius:11px;border:1px solid var(--line);cursor:pointer;display:grid;place-items:center;padding:0;color:#fff}
+.pu svg{width:28px;height:28px;fill:none;stroke:currentColor;stroke-width:2.2;stroke-linecap:round;stroke-linejoin:round}
+.pu[data-k=calm]{background:linear-gradient(160deg,#4fc3a1,#21806a)}
+.pu[data-k=aim]{background:linear-gradient(160deg,#5fa8ff,#2d5fc0)}
+.pu[data-k=freeze]{background:linear-gradient(160deg,#9b7dff,#5b3dc0)}
+.pu[data-k=fan]{background:linear-gradient(160deg,#ff9a52,#c4541c)}
+.pu .n{position:absolute;right:-5px;top:-6px;min-width:18px;height:18px;padding:0 4px;border-radius:9px;background:#fff;color:#14162e;font:800 11px/18px var(--body);text-align:center}
+.pu .n.price{background:#ffc83d}
+.pu.on{outline:3px solid #fff;outline-offset:2px}
+.pu.off{filter:saturate(.35) brightness(.7)}
+.pu:focus-visible{outline:3px solid var(--ion);outline-offset:2px}
+.pu.shake{animation:shake .35s}
+@keyframes shake{25%{transform:translateX(-4px)}75%{transform:translateX(4px)}}
+
+#toast{position:fixed;z-index:4;left:50%;top:30%;transform:translate(-50%,-50%);pointer-events:none;text-align:center;transition:opacity .4s}
+#toast b{display:block;font:400 30px var(--display);text-shadow:0 3px 12px rgba(10,12,30,.8)}
+#toast span{font:600 14px var(--body);color:var(--ink);text-shadow:0 2px 8px rgba(10,12,30,.9)}
+#coach{position:fixed;z-index:4;left:50%;bottom:calc(170px + env(safe-area-inset-bottom,0px));transform:translateX(-50%);pointer-events:none;text-align:center;font:600 15px var(--body);text-shadow:0 2px 8px rgba(10,12,30,.9);white-space:nowrap}
+#coach .hand{display:block;font-size:42px;animation:swipe 1.5s ease-in-out infinite}
+@keyframes swipe{0%{transform:translateY(40px);opacity:0}20%{opacity:1}80%{transform:translateY(-50px);opacity:1}100%{transform:translateY(-60px);opacity:0}}
+#splat{position:fixed;inset:0;z-index:5;pointer-events:none;opacity:0;transition:opacity .5s}
+
+.overlay{position:fixed;inset:0;z-index:6;display:grid;place-items:center;background:radial-gradient(ellipse at center,rgba(10,12,30,.5),rgba(10,12,30,.88));padding:16px;overflow:auto}
+.card{width:min(460px,100%);text-align:center;display:grid;gap:14px}
+.card h1{font-family:var(--display);font-weight:400;font-size:clamp(40px,11vw,62px);line-height:.95;margin:0;text-wrap:balance;background:linear-gradient(180deg,var(--ink) 30%,var(--plasma));-webkit-background-clip:text;background-clip:text;color:transparent}
+.card h2{font-family:var(--display);font-weight:400;font-size:32px;margin:0}
+.card p{margin:0;color:var(--dim);line-height:1.5;text-wrap:balance}
+.rules{display:grid;grid-template-columns:repeat(3,1fr);gap:10px;text-align:left;font-size:12px;color:var(--dim)}
+.rules div{border-top:1px solid var(--line);padding-top:8px}
+.rules b{display:block;color:var(--ink);font-size:13px;margin-bottom:2px}
+button.go{font:20px var(--display);padding:14px 20px;border-radius:12px;border:0;background:var(--plasma);color:#1a0b00;cursor:pointer}
+button.go:hover{filter:brightness(1.1)}
+button.go:focus-visible{outline:3px solid var(--ion);outline-offset:3px}
+button.go.alt{background:transparent;color:var(--ink);border:2px solid var(--ion);font-size:17px}
+.btnrow{display:grid;grid-template-columns:1fr 1.4fr;gap:10px}
+.big{font-family:var(--display);font-size:46px;color:var(--ink);line-height:1}
+.stats{display:grid;grid-template-columns:repeat(3,1fr);gap:8px}
+.stats div{background:rgba(255,255,255,.05);border:1px solid var(--line);border-radius:10px;padding:8px 4px;display:grid;gap:2px}
+.stats b{font:18px var(--display);font-variant-numeric:tabular-nums}
+#newBest{color:var(--good);font-weight:800}
+#target{font-size:11px;color:var(--ion);font-weight:700;max-width:170px;line-height:1.25}
+#beatLine{color:var(--good);font-weight:700;margin:0}
+#friends{display:grid;gap:6px;text-align:left}
+#friends h3{margin:0;font:600 10px var(--body);letter-spacing:.14em;text-transform:uppercase;color:var(--dim)}
+table.res{width:100%;border-collapse:collapse;font-size:14px;font-variant-numeric:tabular-nums}
+table.res td{padding:5px 6px;border-bottom:1px solid var(--line);text-align:left}
+table.res td:last-child{text-align:right}
+table.res tr.me td{color:var(--ion);font-weight:800}
+table.res td.empty{color:var(--dim);font-size:13px;line-height:1.4;text-align:left}
+@media (max-width:420px){
+  .rules{grid-template-columns:1fr}
+  #locName{font-size:12px}
+  #score{font-size:22px}
+  .icon.lang{display:none}
+}
+body:not(.playing) .hud,body:not(.playing) #pups,body:not(.playing) #smash{display:none!important}
+</style>
+
+<canvas id="game"></canvas>
+
+<div class="hud" id="top">
+  <div class="pnl" id="scoreBox"><span class="lbl" id="scoreLbl">Score</span><b id="score">0</b><span id="bestLine"></span><span id="target" hidden></span></div>
+  <div class="pnl" id="locBox"><span id="locName"></span><div id="dots"></div><span id="lives"></span></div>
+  <div id="rightCol">
+    <div class="pnl" id="coinBox"><i class="coin"></i><b id="coins">0</b></div>
+    <div id="tools">
+      <button class="icon lang" id="langBtn" aria-label="Language / Язык"></button>
+      <button class="icon" id="soundBtn" aria-label="Sound"><svg viewBox="0 0 24 24"><path id="soundIcon" d=""/></svg></button>
+      <button class="icon" id="pauseBtn" aria-label="Pause"><svg viewBox="0 0 24 24"><path d="M6 4h4v16H6zM14 4h4v16h-4z"/></svg></button>
+    </div>
+  </div>
+</div>
+<div class="hud pnl" id="mult">x1</div>
+<div class="hud pnl" id="wind"><span class="lbl" id="windLbl">Wind</span><b id="windVal">0</b></div>
+<div class="hud" id="effects"></div>
+
+<button id="smash" aria-label="Smash throw"><span id="smashTxt"></span></button>
+<div id="pups">
+  <button class="pu" data-k="calm"><svg viewBox="0 0 24 24"><path d="M3 8h11a3 3 0 1 0-3-3M3 12h15a3 3 0 1 1-3 3M3 16h7"/></svg><span class="n"></span></button>
+  <button class="pu" data-k="aim"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="8"/><circle cx="12" cy="12" r="3"/><path d="M12 1v4M12 19v4M1 12h4M19 12h4"/></svg><span class="n"></span></button>
+  <button class="pu" data-k="freeze"><svg viewBox="0 0 24 24"><path d="M12 2v20M3.5 7l17 10M20.5 7l-17 10M9 3.5l3 2.5 3-2.5M9 20.5l3-2.5 3 2.5"/></svg><span class="n"></span></button>
+  <button class="pu" data-k="fan"><svg viewBox="0 0 24 24"><circle cx="5" cy="17" r="2.5"/><circle cx="12" cy="17" r="2.5"/><circle cx="19" cy="17" r="2.5"/><path d="M5 13L8 4M12 13V3M19 13l-3-9"/></svg><span class="n"></span></button>
+</div>
+
+<div id="toast"></div>
+<div id="coach" hidden><span class="hand">👆</span><span id="coachText"></span></div>
+<canvas id="splat"></canvas>
+
+<div class="overlay" id="menu">
+  <div class="card">
+    <h1 id="mTitle">Office<br>sniper</h1>
+    <p id="mIntro"></p>
+    <div class="rules">
+      <div><b id="r1h"></b><span id="r1"></span></div>
+      <div><b id="r2h"></b><span id="r2"></span></div>
+      <div><b id="r3h"></b><span id="r3"></span></div>
+    </div>
+    <button class="go" id="startBtn">Start</button>
+    <div class="lbl" id="mBest"></div>
+  </div>
+</div>
+
+<div class="overlay" id="pauseOv" hidden>
+  <div class="card">
+    <h2 id="pauseT">Pause</h2>
+    <button class="go" id="resumeBtn">Resume</button>
+    <button class="go alt" id="quitBtn">Menu</button>
+  </div>
+</div>
+
+<div class="overlay" id="over" hidden>
+  <div class="card">
+    <h2 id="oTitle">Fired!</h2>
+    <p id="overText"></p>
+    <div class="big" id="finalScore">0</div>
+    <p id="newBest" hidden></p>
+    <p id="beatLine" hidden></p>
+    <div class="stats">
+      <div><span class="lbl" id="sBasketsL"></span><b id="sBaskets">0</b></div>
+      <div><span class="lbl" id="sHeadsL"></span><b id="sHeads">0</b></div>
+      <div><span class="lbl" id="sBrokeL"></span><b id="sBroke">0</b></div>
+    </div>
+    <div id="friends"><h3 id="friendsH">Friends</h3><table class="res" id="friendsTable"></table></div>
+    <div class="btnrow"><button class="go alt" id="shareBtn">Share</button><button class="go" id="againBtn">Again</button></div>
+  </div>
+</div>
+
+<script src="game.js"></script>
