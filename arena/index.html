@@ -321,6 +321,8 @@ const cloudOK = inTelegram && tgv('6.9');
 if (tg){
   try { tg.ready(); tg.expand(); } catch(e){}
   if (tgv('7.7')) try { tg.disableVerticalSwipes(); } catch(e){} // dragging the joystick down must not close the app
+  // opened from the LVV Games catalog: Telegram's Back button returns there
+  if (tgv('6.1') && /[?&]from=hub\b/.test(location.search)) try { tg.BackButton.show(); tg.BackButton.onClick(() => { location.href = '../'; }); } catch(e){}
   if (tgv('6.1')) try { tg.setHeaderColor('#10122a'); tg.setBackgroundColor('#bfe0f0'); } catch(e){}
   const u = tg.initDataUnsafe && tg.initDataUnsafe.user;
   if (u){
