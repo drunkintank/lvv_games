@@ -12,7 +12,7 @@ const I18N = {
   ru: {
     title: 'Офисный снайпер', titleHtml: 'Офисный<br>снайпер',
     intro: 'Рабочий день тянется вечно. Скомкай отчёт и закинь его в корзину — через стеклянные перегородки, флипчарты, лампы и голубей. Только не разбуди шефа.',
-    r1h: 'Корзина', r1: 'Веди пальцем — бумажка полетит туда, куда указываешь. Отпусти — бросок. Ветер сносит.',
+    r1h: 'Корзина', r1: 'Веди пальцем: пунктир покажет полёт с учётом ветра и оборвётся там, где шарик во что-то врежется. Отпусти — бросок.',
     zone: { ok: 'до корзины', short: 'ближний бросок', long: 'перелёт' },
     r2h: 'Лысина шефа', r2: 'Попади шефу в лысину — получишь очки. Но шеф злится.',
     r3h: 'Разнос', r3: 'Серия попаданий заряжает скотч-бомбу: она пробивает преграды и крушит офис.',
@@ -20,8 +20,8 @@ const I18N = {
     wind: 'Ветер', calm: 'штиль', pause: 'Пауза', resume: 'Продолжить', menu: 'Меню',
     coach: 'Свайпни вверх в сторону корзины',
     smash: 'РАЗ-<br>НОС', smashArmed: 'ГОТОВ',
-    pu: { calm: 'Штиль', aim: 'Прицел', freeze: 'Стоп', fan: 'Веер' },
-    effCalm: n => `Штиль ×${n}`, effAim: n => `Прицел ×${n}`, effFreeze: n => `Стоп ×${n}`, effFan: 'Веер готов', effHeavy: 'Скотч-бомба готова',
+    pu: { calm: 'Штиль', aim: 'Аимлок', freeze: 'Стоп', fan: 'Веер' },
+    effCalm: n => `Штиль ×${n}`, effAim: n => `Аимлок ×${n}`, effFreeze: n => `Стоп ×${n}`, effFan: 'Веер готов', effHeavy: 'Скотч-бомба готова',
     noCoins: 'Не хватает монет', bought: 'Куплено',
     clean: 'ЧИСТО!', rim: 'С ДУЖКИ', bull: 'В ЯБЛОЧКО!', head: 'ПО ЛЫСИНЕ', miss: 'МИМО', bonus: 'ПРЕМИЯ!',
     smashHit: 'РАЗНОС!', smashGlass: 'ВДРЕБЕЗГИ', newLoc: 'Новая локация', life: '+1 жизнь', loop: n => `Круг ${n}: ветер сильнее`,
@@ -38,7 +38,7 @@ const I18N = {
   en: {
     title: 'Office Sniper', titleHtml: 'Office<br>sniper',
     intro: 'The workday drags on forever. Crumple the report and land it in the bin — past glass walls, flipcharts, lamps and pigeons. Just don’t wake the boss.',
-    r1h: 'The bin', r1: 'Drag your finger — the ball flies where you point. Let go to throw. Wind drifts it.',
+    r1h: 'The bin', r1: 'Drag your finger: the dotted line shows the flight with wind and stops where the ball would hit something. Let go to throw.',
     zone: { ok: 'to the bin', short: 'short lob', long: 'overshoot' },
     r2h: 'Boss’s bald spot', r2: 'Hit the boss’s bald spot for points. But he gets angry.',
     r3h: 'Smash', r3: 'A streak charges the tape bomb: it breaks through obstacles and wrecks the office.',
@@ -46,8 +46,8 @@ const I18N = {
     wind: 'Wind', calm: 'calm', pause: 'Paused', resume: 'Resume', menu: 'Menu',
     coach: 'Swipe up toward the bin',
     smash: 'SMA-<br>SH', smashArmed: 'READY',
-    pu: { calm: 'Calm', aim: 'Aim', freeze: 'Freeze', fan: 'Fan' },
-    effCalm: n => `Calm ×${n}`, effAim: n => `Aim ×${n}`, effFreeze: n => `Freeze ×${n}`, effFan: 'Fan ready', effHeavy: 'Tape bomb ready',
+    pu: { calm: 'Calm', aim: 'Aim lock', freeze: 'Freeze', fan: 'Fan' },
+    effCalm: n => `Calm ×${n}`, effAim: n => `Aim lock ×${n}`, effFreeze: n => `Freeze ×${n}`, effFan: 'Fan ready', effHeavy: 'Tape bomb ready',
     noCoins: 'Not enough coins', bought: 'Bought',
     clean: 'CLEAN!', rim: 'OFF THE RIM', bull: 'BULLSEYE!', head: 'BALD SPOT', miss: 'MISS', bonus: 'BONUS!',
     smashHit: 'SMASH!', smashGlass: 'SHATTERED', newLoc: 'New location', life: '+1 life', loop: n => `Lap ${n}: stronger wind`,
@@ -150,7 +150,8 @@ const cv = $('game'); let ctx = cv.getContext('2d'); let bgDirty = true;
 let W = 0, H = 0, DPR = 1, F = 600, HY = 300;
 const CAMY = 1.45, RW = 2.0, CEIL = 3.0, ZB = 7.5, Z0 = 0.9, Y0 = 1.02, TH = 52 * Math.PI / 180, G = 9.8, BIN_H = 0.6;
 function resize() {
-  W = innerWidth; H = innerHeight; DPR = Math.min(2, devicePixelRatio || 1);
+  // never zero: a 0-size canvas makes drawImage throw and would stop the frame loop (Telegram webviews can report 0 while opening)
+  W = Math.max(1, innerWidth); H = Math.max(1, innerHeight); DPR = Math.min(2, devicePixelRatio || 1);
   cv.width = W * DPR | 0; cv.height = H * DPR | 0;
   F = Math.min(W * 1.2, H * 0.7);
   HY = H * 0.41;
@@ -617,7 +618,7 @@ const effWind = () => S.eff.calm > 0 ? 0 : S.wind;
 
 // ---------- balls ----------
 function makeCreases() { const c = []; for (let i = 0; i < 6; i++) { const a = rand(0, 7), r = rand(.2, .9); c.push([Math.cos(a) * r, Math.sin(a) * r, Math.cos(a + rand(1, 2.5)) * rand(.2, .9), Math.sin(a + rand(1, 2.5)) * rand(.2, .9)]); } return c; }
-// Aiming: the finger picks a spot at bin-rim height, nothing in the scene attracts the throw.
+// Aiming: the finger picks a spot at bin-rim height; the guide shows the true flight with wind (aim lock homes in on the bin).
 function aimAt(sx, sy) {
   const dx = (sx - W / 2) / F, dy = -(sy - HY) / F;
   const z = clamp(dy < -1e-3 ? (BIN_H - CAMY) / dy : ZB, Z0 + .8, ZB - .3);
@@ -626,6 +627,73 @@ function aimAt(sx, sy) {
 function solveThrow(t) {
   const fz = t.z - Z0, D = Math.max(.5, Math.hypot(t.x, fz));
   return { phi: Math.atan2(t.x, fz), v: needV(D, Y0 - t.y) };
+}
+// True flight of a throw released right now, integrated like stepBall (1/240 s, gusts timed from the release,
+// bounces off side walls and ceiling indoors). With `objects` the path stops at the first thing the ball would hit:
+// the obstacle as it will be when the ball gets there, the boss, a breakable, the bin, or the floor.
+// `land` is where it comes down at rim height, `hit` names what stopped it.
+function simPath(phi, v, heavy, objects) {
+  const Lc = LOC(), O = S.obst, B = S.boss, r = heavy ? .1 : BALL_R, vh = v * Math.cos(TH), dt = 1 / 240;
+  const obstRate = S.eff.freeze > 0 ? 0 : diff();
+  let x = 0, y = Y0, z = Z0, vx = vh * Math.sin(phi), vy = v * Math.sin(TH), vz = vh * Math.cos(phi), tau = 0, land = null;
+  const pts = [];
+  for (let i = 0; i < 1600; i++) {
+    const gust = Lc.gust ? 1 + Lc.gust * Math.sin((S.time + tau) * 6 + tau * 9) : 1;
+    const px = x, py = y, pz = z;
+    vx += effWind() * .9 * gust * (heavy ? .35 : 1) * dt; vy -= G * dt;
+    x += vx * dt; y += vy * dt; z += vz * dt; tau += dt;
+    if (!Lc.outdoor) {
+      if (Math.abs(x) > RW - r) { x = Math.sign(x) * (RW - r); vx = -vx * .3; }
+      if (y > CEIL - r) { y = CEIL - r; vy = -Math.abs(vy) * .3; }
+    }
+    pts.push([x, y, z]);
+    if (objects) {
+      if (!heavy && !O.broken && ((pz < O.z && z >= O.z) || (pz > O.z && z <= O.z))) {
+        const k = (O.z - pz) / (z - pz), cx = lerp(px, x, k), cy = lerp(py, y, k), t0 = O.t;
+        O.t = t0 + tau * obstRate; const blocked = O.solid(cx, cy, r); O.t = t0;
+        if (blocked) { pts[pts.length - 1] = [cx, cy, O.z]; return { pts, land, hit: 'obst' }; }
+      }
+      const hy = 1.3 + B.stand * .35;
+      if (Math.hypot(x - B.x, y - hy, z - B.z) < .16 + r) return { pts, land, hit: 'head' };
+      if (Math.abs(x - B.x) < .28 + r && y < 1.14 + B.stand * .35 && y > .3 && Math.abs(z - B.z) < .26 + r) return { pts, land, hit: 'boss' };
+      if (!heavy) for (const pr of S.props) {
+        if (!pr.hit || pr.broken) continue;
+        if (Math.hypot(x - pr.hit[0], y - pr.hit[1], z - pr.hit[2]) < pr.hit[3] + r) return { pts, land, hit: 'prop' };
+      }
+    }
+    if (!land && vy < 0 && y <= BIN_H) {
+      land = { x, y: BIN_H, z };
+      if (!objects || inBin(land)) return { pts, land, hit: objects ? 'bin' : null };
+    }
+    if (y <= r) return { pts, land, hit: 'floor' };
+    if (z > ZB || (Lc.outdoor && Math.abs(x) > 3.9)) break;
+  }
+  return { pts, land, hit: null };
+}
+// Throw that lands on the point t despite the wind: shift the aim by the miss until it converges.
+function solveComp(t, heavy) {
+  let ax = t.x, az = t.z, sol = solveThrow(t);
+  for (let k = 0; k < 6; k++) {
+    const land = simPath(sol.phi, sol.v, heavy).land;
+    if (!land) break;
+    const ex = t.x - land.x, ez = t.z - land.z;
+    if (Math.abs(ex) + Math.abs(ez) < .005) break;
+    ax += ex; az = clamp(az + ez, Z0 + .8, ZB - .3);
+    sol = solveThrow({ x: ax, y: t.y, z: az });
+  }
+  return sol;
+}
+const aimLock = () => S.eff.aim > 0;
+// what a release right now would throw: aim lock homes in on the bin, otherwise the finger's spot as is
+function plannedThrow() {
+  if (aimLock()) return solveComp({ x: S.bin.x, y: BIN_H, z: S.bin.z }, S.heavyArmed);
+  return drag ? solveThrow(aimAt(drag.x, drag.y)) : null;
+}
+const inBin = p => !!p && Math.hypot(p.x - S.bin.x, p.z - S.bin.z) < BIN_R - BALL_R * .5;
+function ring3(x, y, z, r, color, lw) {
+  ctx.strokeStyle = color; ctx.lineWidth = lw; ctx.beginPath();
+  for (let i = 0; i <= 32; i++) { const a = i / 32 * Math.PI * 2, q = P(x + Math.cos(a) * r, y, z + Math.sin(a) * r); i ? ctx.lineTo(q[0], q[1]) : ctx.moveTo(q[0], q[1]); }
+  ctx.stroke();
 }
 function throwBall(phi, v) {
   const heavy = S.heavyArmed;
@@ -948,19 +1016,25 @@ function drawEnvelope() {
   ctx.restore();
 }
 function drawAimGuide() {
-  if (!drag) return;
-  const t = aimAt(drag.x, drag.y), { phi, v } = solveThrow(t);
-  // dotted arc up to the top point; with "Aim" on it is the full true path including wind
-  const wind = S.eff.aim > 0 ? effWind() * .9 * (S.heavyArmed ? .35 : 1) : 0;
-  const vh = v * Math.cos(TH);
-  let x = 0, y = Y0, z = Z0, vx = vh * Math.sin(phi), vy = v * Math.sin(TH), vz = vh * Math.cos(phi);
-  ctx.fillStyle = 'rgba(255,255,255,.85)';
-  for (let i = 0; i < 200; i++) {
-    const dt = 1 / 90; vx += wind * dt; vy -= G * dt; x += vx * dt; y += vy * dt; z += vz * dt;
-    if ((vy < 0 && y < t.y) || y < 0) break;
-    if (vy < 0 && S.eff.aim <= 0) break; // only the rise is shown; where it lands is up to the player
-    if (i % 5 === 4) { const q = P(x, y, z); ctx.beginPath(); ctx.arc(q[0], q[1], Math.max(2, .03 * q[2]), 0, 7); ctx.fill(); }
+  const lock = aimLock();
+  if (!drag && !lock) return;
+  if (lock) { // lock-on marker over the bin
+    const pulse = 1 + Math.sin(S.time * 7) * .06;
+    ring3(S.bin.x, BIN_H + .01, S.bin.z, (BIN_R + .1) * pulse, 'rgba(95,214,255,.9)', 3);
   }
+  const sol = drag && plannedThrow();
+  if (!sol) return;
+  // the dotted path runs exactly as far as the ball would fly: it stops at the obstacle, the boss, a prop, the bin or the floor
+  const { pts, land, hit } = simPath(sol.phi, sol.v, S.heavyArmed, true);
+  ctx.fillStyle = lock ? 'rgba(95,214,255,.95)' : 'rgba(255,255,255,.85)';
+  for (let i = 12; i < pts.length; i += 14) { const q = P(pts[i][0], pts[i][1], pts[i][2]); ctx.beginPath(); ctx.arc(q[0], q[1], Math.max(2, .028 * q[2]), 0, 7); ctx.fill(); }
+  // the last dot shows the point of impact when something is in the way
+  if (hit === 'obst' || hit === 'boss' || hit === 'prop') {
+    const e = pts[pts.length - 1], q = P(e[0], e[1], e[2]);
+    ctx.fillStyle = '#ff5d6c'; ctx.beginPath(); ctx.arc(q[0], q[1], Math.max(4, .045 * q[2]), 0, 7); ctx.fill();
+  }
+  // landing ring only with aim lock
+  if (lock && land) { const good = inBin(land); ring3(land.x, BIN_H + .01, land.z, .1, good ? '#7dff8a' : 'rgba(255,255,255,.9)', good ? 4 : 2.5); }
 }
 function drawWindStreaks(dt) {
   const w = effWind();
@@ -1062,9 +1136,8 @@ cv.addEventListener('pointerdown', e => {
 cv.addEventListener('pointermove', e => { if (drag && e.pointerId === drag.id) { drag.x = e.clientX; drag.y = e.clientY; } });
 const endDrag = e => {
   if (!drag || e.pointerId !== drag.id) return;
-  const t = aimAt(drag.x, drag.y); drag = null;
-  if (!canThrow()) return;
-  const sol = solveThrow(t);
+  const sol = plannedThrow(); drag = null;
+  if (!canThrow() || !sol) return;
   throwBall(sol.phi, sol.v);
 };
 cv.addEventListener('pointerup', endDrag);
