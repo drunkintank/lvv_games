@@ -12,13 +12,13 @@ const I18N = {
   ru: {
     title: 'Офисный снайпер', titleHtml: 'Офисный<br>снайпер',
     intro: 'Рабочий день тянется вечно. Скомкай отчёт и закинь его в корзину — через стеклянные перегородки, флипчарты, лампы и голубей. Только не разбуди шефа.',
-    r1h: 'Корзина', r1: 'Веди пальцем: пунктир покажет полёт с учётом ветра и оборвётся там, где шарик во что-то врежется. Отпусти — бросок.',
+    r1h: 'Корзина', r1: 'Бумажка падает точно в прицел. Веди палец в любом месте экрана: вверх — дальше, в стороны — левее и правее. Прицел дрожит, а если долго держать, руки устают и дрожь растёт. Зелёный прицел — бумажка попадёт: лови момент. С Кухни корзина начинает ездить.',
     zone: { ok: 'до корзины', short: 'ближний бросок', long: 'перелёт' },
     r2h: 'Лысина шефа', r2: 'Попади шефу в лысину — получишь очки. Но шеф злится.',
     r3h: 'Разнос', r3: 'Серия попаданий заряжает скотч-бомбу: она пробивает преграды и крушит офис.',
     start: 'В бой', best: n => `Рекорд: ${n}`, score: 'Очки', bestShort: n => `рекорд ${n}`,
     wind: 'Ветер', calm: 'штиль', pause: 'Пауза', resume: 'Продолжить', menu: 'Меню',
-    coach: 'Свайпни вверх в сторону корзины',
+    coach: 'Веди палец — наведи прицел на корзину и отпусти',
     smash: 'РАЗ-<br>НОС', smashArmed: 'ГОТОВ',
     pu: { calm: 'Штиль', aim: 'Аимлок', freeze: 'Стоп', fan: 'Веер' },
     effCalm: n => `Штиль ×${n}`, effAim: n => `Аимлок ×${n}`, effFreeze: n => `Стоп ×${n}`, effFan: 'Веер готов', effHeavy: 'Скотч-бомба готова',
@@ -38,13 +38,13 @@ const I18N = {
   en: {
     title: 'Office Sniper', titleHtml: 'Office<br>sniper',
     intro: 'The workday drags on forever. Crumple the report and land it in the bin — past glass walls, flipcharts, lamps and pigeons. Just don’t wake the boss.',
-    r1h: 'The bin', r1: 'Drag your finger: the dotted line shows the flight with wind and stops where the ball would hit something. Let go to throw.',
+    r1h: 'The bin', r1: 'The paper lands right on the reticle. Drag anywhere on the screen: up moves it farther, sideways steers. The reticle shakes, and the longer you hold the worse it gets. Green means it goes in — time your release. From the Kitchen on the bin starts moving.',
     zone: { ok: 'to the bin', short: 'short lob', long: 'overshoot' },
     r2h: 'Boss’s bald spot', r2: 'Hit the boss’s bald spot for points. But he gets angry.',
     r3h: 'Smash', r3: 'A streak charges the tape bomb: it breaks through obstacles and wrecks the office.',
     start: 'Let’s go', best: n => `Best: ${n}`, score: 'Score', bestShort: n => `best ${n}`,
     wind: 'Wind', calm: 'calm', pause: 'Paused', resume: 'Resume', menu: 'Menu',
-    coach: 'Swipe up toward the bin',
+    coach: 'Drag to put the reticle on the bin, then let go',
     smash: 'SMA-<br>SH', smashArmed: 'READY',
     pu: { calm: 'Calm', aim: 'Aim lock', freeze: 'Freeze', fan: 'Fan' },
     effCalm: n => `Calm ×${n}`, effAim: n => `Aim lock ×${n}`, effFreeze: n => `Freeze ×${n}`, effFan: 'Fan ready', effHeavy: 'Tape bomb ready',
@@ -592,9 +592,30 @@ const LOC = () => LOCS[S.loc];
 const diff = () => 1 + S.lap * .25;
 const multOf = s => s >= 10 ? 4 : s >= 6 ? 3 : s >= 3 ? 2 : 1;
 
+// how far the bin slides to each side (metres): still in the first two rooms, moving from the kitchen on
+const binMove = () => Math.min(.75, [0, 0, .35, .5, .6][S.loc] + S.lap * .15);
+const binW = () => 1 + S.lap * .15;
+// bin x after tau more seconds (Freeze stops it, like the obstacles)
+const binXAt = tau => S.bin.cx + S.bin.A * Math.sin(S.bin.ph + (S.eff.freeze > 0 ? 0 : tau * binW()));
+// a spot for the bin inside the room's range and clear of furniture over its whole slide, so it never stands inside a barrel
+function placeBin(k = 1) {
+  const Lc = LOC(), B = S.bin, wall = (Lc.outdoor ? 3.6 : RW) - BIN_R - .05;
+  const clear = (cx, A) => Math.abs(cx) + A <= wall && S.props.every(p => {
+    const pr = p.hit ? p.hit[3] : .45, gap = pr + BIN_R + .08;
+    return Math.abs(p.z - B.z) > gap || Math.max(0, Math.abs(p.x - cx) - A) > gap;
+  });
+  let A = binMove(), cx = 0;
+  for (let i = 0; i < 60; i++) {
+    const c = rand(-Lc.binX, Lc.binX) * k, a = i < 40 ? A : A * (1 - (i - 40) / 20);
+    if (clear(c, a)) { cx = c; A = a; break; }
+    if (i === 59) A = 0;
+  }
+  B.cx = cx; B.A = A; B.x = binXAt(0);
+}
 function setupLocation() {
   const Lc = LOC();
-  S.bin = { x: rand(-Lc.binX, Lc.binX) * .6, z: Lc.binZ };
+  S.bin = { x: 0, z: Lc.binZ, cx: 0, A: 0, ph: rand(0, 6) };
+  lastAim = null; // the bin moved: touch aiming starts fresh
   const KX = .77, KZ = .82;
   S.props = Lc.props.map(p => ({ ...p, x: p.x * KX, z: p.z * KZ, hit: p.hit && [p.hit[0] * KX, p.hit[1], p.hit[2] * KZ, p.hit[3]] }));
   const b = Lc.boss;
@@ -603,6 +624,7 @@ function setupLocation() {
     S.props.push({ t: 'monitor', x: b.x, z: b.z + .55, back: true, brk: 1, hit: [b.x, 1.0, b.z + .55, .3], col: '#262a34' });
     S.props.push({ t: 'mug', x: b.x + .34 * Math.sign(-b.x), z: b.z + .4, c: '#5fa8ff', brk: 1, hit: [b.x + .34 * Math.sign(-b.x), .85, b.z + .4, .18], col: '#5fa8ff' });
   }
+  placeBin(.6);
   S.boss = { x: b.x, z: b.z, anger: 0, look: 0, lookCd: rand(10, 16), rage: 0, stand: 0, face: 0, bubble: null, flash: 0, wob: 0 };
   S.obst = makeObst(Lc.obst, Lc.oz);
   S.litter = []; S.binPile = 0; S.env = null;
@@ -618,11 +640,11 @@ const effWind = () => S.eff.calm > 0 ? 0 : S.wind;
 
 // ---------- balls ----------
 function makeCreases() { const c = []; for (let i = 0; i < 6; i++) { const a = rand(0, 7), r = rand(.2, .9); c.push([Math.cos(a) * r, Math.sin(a) * r, Math.cos(a + rand(1, 2.5)) * rand(.2, .9), Math.sin(a + rand(1, 2.5)) * rand(.2, .9)]); } return c; }
-// Aiming: the finger picks a spot at bin-rim height; the guide shows the true flight with wind (aim lock homes in on the bin).
-function aimAt(sx, sy) {
+// screen point → spot on the horizontal plane at height y (bin-rim height by default)
+function aimAt(sx, sy, y = BIN_H) {
   const dx = (sx - W / 2) / F, dy = -(sy - HY) / F;
-  const z = clamp(dy < -1e-3 ? (BIN_H - CAMY) / dy : ZB, Z0 + .8, ZB - .3);
-  return { x: clamp(dx * z, -RW + .1, RW - .1), y: BIN_H, z };
+  const z = clamp(dy < -1e-3 ? (y - CAMY) / dy : ZB, Z0 + .8, ZB - .3);
+  return { x: clamp(dx * z, -RW + .1, RW - .1), y, z };
 }
 function solveThrow(t) {
   const fz = t.z - Z0, D = Math.max(.5, Math.hypot(t.x, fz));
@@ -663,33 +685,101 @@ function simPath(phi, v, heavy, objects) {
     }
     if (!land && vy < 0 && y <= BIN_H) {
       land = { x, y: BIN_H, z };
-      if (!objects || inBin(land)) return { pts, land, hit: objects ? 'bin' : null };
+      if (!objects || inBin(land, binXAt(tau))) return { pts, land, hit: objects ? 'bin' : null };
     }
     if (y <= r) return { pts, land, hit: 'floor' };
     if (z > ZB || (Lc.outdoor && Math.abs(x) > 3.9)) break;
   }
   return { pts, land, hit: null };
 }
-// Throw that lands on the point t despite the wind: shift the aim by the miss until it converges.
-function solveComp(t, heavy) {
+// ---------- aiming ----------
+// One rule the player can trust: the paper lands where the reticle is. The reticle lies on the floor, or sticks to the
+// bin-rim plane over the bin / the boss's bald spot, and the throw is solved against the real wind so it arrives
+// right there. Wind instead sways the reticle sideways, so the skill is timing the release (Calm stops the sway,
+// aim lock pins the reticle to the bin). Touch moves the reticle relative to the finger, in metres, so the finger never
+// covers what you aim at; a mouse places it directly.
+// FLOOR_Y: the ball's centre when it touches the floor, so the solved flight ends exactly at first contact
+const FLOOR_Y = BALL_R, TOUCH_PX_PER_M = { x: 130, z: 95 }, BOSS_SNAP = .32;
+let lastAim = null; // raw floor spot of the previous throw in this location
+const aimLock = () => S.eff.aim > 0;
+const headPos = () => { const B = S.boss; return { x: B.x, y: 1.3 + B.stand * .35, z: B.z }; };
+const sway = () => effWind() * .09 * Math.sin(S.time * 1.8); // metres sideways
+// where the player points, before snapping and sway
+function rawAim(d) {
+  if (!d.rel) {
+    const h = headPos(), q = P(h.x, h.y, h.z);
+    if (Math.hypot(d.x - q[0], d.y - q[1]) < Math.max(18, .26 * q[2])) return { x: h.x, z: h.z, head: true };
+    const f = aimAt(d.x, d.y, FLOOR_Y); return { x: f.x, z: f.z };
+  }
+  return { x: clamp(d.wx + (d.x - d.x0) / TOUCH_PX_PER_M.x, -RW + .1, RW - .1), z: clamp(d.wz - (d.y - d.y0) / TOUCH_PX_PER_M.z, Z0 + .8, ZB - .3) };
+}
+// sniper's hands: the reticle never stands still. Small wobble at first, more each room and with a long streak, and it
+// grows if you hold too long (after 0.5 s), so the skill is aiming fast and releasing while it crosses the bin
+function tremor() {
+  if (!drag) return { x: 0, z: 0 };
+  const hold = S.time - (drag.t0 ?? S.time), t = S.time;
+  const a = .08 + .02 * S.loc + .008 * Math.min(S.streak, 12) + .04 * S.lap + .3 * clamp((hold - .5) / 1.8, 0, 1);
+  return { x: a * (Math.sin(t * 2.1) * .7 + Math.sin(t * 3.7 + 1) * .3), z: a * .6 * (Math.sin(t * 1.6 + 2) * .7 + Math.sin(t * 2.9) * .3) };
+}
+// aim lock leads a sliding bin: aims where the bin will be when the paper comes down
+function leadBin() {
+  let x = S.bin.x;
+  if (!S.bin.A || S.eff.freeze > 0) return x;
+  for (let k = 0; k < 3; k++) {
+    const pts = flight(solveTo({ x, y: BIN_H, z: S.bin.z }, S.heavyArmed), S.heavyArmed);
+    let top = 0; pts.forEach((p, i) => { if (p[1] > pts[top][1]) top = i; });
+    let i = top; while (i < pts.length - 1 && pts[i][1] > BIN_H) i++;
+    x = binXAt((i + 1) / 240);
+  }
+  return x;
+}
+// the reticle: the exact point the next throw will reach
+function reticle() {
+  if (aimLock()) return { x: leadBin(), y: BIN_H, z: S.bin.z, kind: 'bin', locked: true };
+  if (!drag) return null;
+  const r = rawAim(drag), s = sway(), w = tremor(), h = headPos();
+  if (r.head || Math.hypot(r.x - h.x, r.z - h.z) < BOSS_SNAP) return { x: h.x + (s + w.x) * .6, y: h.y + .03, z: h.z + w.z * .6, kind: 'head' };
+  const x = clamp(r.x + s + w.x, -RW + .1, RW - .1), z = clamp(r.z + w.z, Z0 + .8, ZB - .3), B = S.bin, m = BIN_R + .12;
+  // over the bin's track the reticle rides at rim height, so it shows where the paper drops in; elsewhere it lies on the floor
+  if (Math.abs(z - B.z) < m && x > B.cx - B.A - m && x < B.cx + B.A + m) return { x, y: BIN_H, z, kind: 'bin' };
+  return { x, y: FLOOR_Y, z, kind: 'floor' };
+}
+// free flight (walls and ceiling as in stepBall, nothing else) until the floor
+function flight(sol, heavy) {
+  const Lc = LOC(), r = heavy ? .1 : BALL_R, vh = sol.v * Math.cos(TH), dt = 1 / 240, pts = [];
+  let x = 0, y = Y0, z = Z0, vx = vh * Math.sin(sol.phi), vy = sol.v * Math.sin(TH), vz = vh * Math.cos(sol.phi), tau = 0;
+  for (let i = 0; i < 1600 && y > 0 && z < ZB + .5; i++) {
+    const gust = Lc.gust ? 1 + Lc.gust * Math.sin((S.time + tau) * 6 + tau * 9) : 1;
+    vx += effWind() * .9 * gust * (heavy ? .35 : 1) * dt; vy -= G * dt;
+    x += vx * dt; y += vy * dt; z += vz * dt; tau += dt;
+    if (!Lc.outdoor) {
+      if (Math.abs(x) > RW - r) { x = Math.sign(x) * (RW - r); vx = -vx * .3; }
+      if (y > CEIL - r) { y = CEIL - r; vy = -Math.abs(vy) * .3; }
+    }
+    pts.push([x, y, z]);
+  }
+  return pts;
+}
+// the throw that passes through point t despite wind and gusts: shift the aim by the miss at closest approach until it converges
+function solveTo(t, heavy) {
   let ax = t.x, az = t.z, sol = solveThrow(t);
-  for (let k = 0; k < 6; k++) {
-    const land = simPath(sol.phi, sol.v, heavy).land;
-    if (!land) break;
-    const ex = t.x - land.x, ez = t.z - land.z;
-    if (Math.abs(ex) + Math.abs(ez) < .005) break;
-    ax += ex; az = clamp(az + ez, Z0 + .8, ZB - .3);
+  for (let k = 0; k < 8; k++) {
+    let best = null, bd = 1e9;
+    for (const p of flight(sol, heavy)) { const d = (p[0] - t.x) ** 2 + (p[1] - t.y) ** 2 + (p[2] - t.z) ** 2; if (d < bd) { bd = d; best = p; } }
+    if (!best) break;
+    const ex = t.x - best[0], ez = t.z - best[2];
+    if (Math.abs(ex) + Math.abs(ez) < .004) break;
+    ax += ex; az = clamp(az + ez, Z0 + .5, ZB);
     sol = solveThrow({ x: ax, y: t.y, z: az });
   }
   return sol;
 }
-const aimLock = () => S.eff.aim > 0;
-// what a release right now would throw: aim lock homes in on the bin, otherwise the finger's spot as is
+// what a release right now would throw
 function plannedThrow() {
-  if (aimLock()) return solveComp({ x: S.bin.x, y: BIN_H, z: S.bin.z }, S.heavyArmed);
-  return drag ? solveThrow(aimAt(drag.x, drag.y)) : null;
+  const r = reticle();
+  return r ? solveTo(r, S.heavyArmed) : null;
 }
-const inBin = p => !!p && Math.hypot(p.x - S.bin.x, p.z - S.bin.z) < BIN_R - BALL_R * .5;
+const inBin = (p, bx = S.bin.x) => !!p && Math.hypot(p.x - bx, p.z - S.bin.z) < BIN_R - BALL_R * .5;
 function ring3(x, y, z, r, color, lw) {
   ctx.strokeStyle = color; ctx.lineWidth = lw; ctx.beginPath();
   for (let i = 0; i <= 32; i++) { const a = i / 32 * Math.PI * 2, q = P(x + Math.cos(a) * r, y, z + Math.sin(a) * r); i ? ctx.lineTo(q[0], q[1]) : ctx.moveTo(q[0], q[1]); }
@@ -837,8 +927,9 @@ function stepBall(b, dt) {
   }
   if (b.y < b.r) {
     b.y = b.r;
-    if (b.vy < -1.2) { b.vy = -b.vy * .28; if (b.vy > .6) SFX.thud(); } else b.vy = 0;
-    b.vx *= .94; b.vz *= .94; b.spin *= .9;
+    // crumpled paper splats: a small hop and most of the speed gone, so it stays about where the reticle was
+    if (b.vy < -1.2) { b.vy = -b.vy * .07; b.vx *= .2; b.vz *= .2; if (b.vy > .3) SFX.thud(); } else b.vy = 0;
+    b.vx *= .9; b.vz *= .9; b.spin *= .9;
     if (Math.hypot(b.vx, b.vz) < .35 && Math.abs(b.vy) < .1) b.state = 'rest';
   }
   if (b.t > 5 || b.z < .3) b.state = 'rest';
@@ -862,7 +953,7 @@ function resolveThrow() {
   } else {
     S.prog += r.baskets;
     if (S.prog >= STEPS) { nextLocation(); updateHud(); return; }
-    S.bin.x = rand(-LOC().binX, LOC().binX);
+    placeBin();
   }
   newWind();
   if (!S.env && S.throwN > 1 && Math.random() < .3) S.env = { ph: rand(0, 6), x: 0, y: 0, z: 0 };
@@ -1015,26 +1106,57 @@ function drawEnvelope() {
   ctx.fillStyle = '#e8344a'; ctx.beginPath(); ctx.arc(0, h * .1, h * .18, 0, 7); ctx.fill();
   ctx.restore();
 }
+// cross hairs lying on a horizontal plane
+function cross3(x, y, z, R, color, lw) {
+  ctx.strokeStyle = color; ctx.lineWidth = lw; ctx.beginPath();
+  for (const [dx, dz] of [[1, 0], [-1, 0], [0, 1], [0, -1]]) {
+    const a = P(x + dx * R * .55, y, z + dz * R * .55), b = P(x + dx * R * 1.35, y, z + dz * R * 1.35);
+    ctx.moveTo(a[0], a[1]); ctx.lineTo(b[0], b[1]);
+  }
+  ctx.stroke();
+}
+const AIM_COL = { floor: '#ffffff', bin: '#7dff8a', head: '#ffd166', lock: '#5fd6ff', bad: '#ff5d6c', dim: 'rgba(255,255,255,.55)' };
 function drawAimGuide() {
-  const lock = aimLock();
-  if (!drag && !lock) return;
-  if (lock) { // lock-on marker over the bin
-    const pulse = 1 + Math.sin(S.time * 7) * .06;
-    ring3(S.bin.x, BIN_H + .01, S.bin.z, (BIN_R + .1) * pulse, 'rgba(95,214,255,.9)', 3);
+  const r = reticle();
+  if (!r) return;
+  const pulse = 1 + Math.sin(S.time * 7) * .05;
+  // predicted outcome against everything in the room: does the paper reach the reticle or hit something first?
+  let pts = [], hit = null;
+  if (drag) { const sol = solveTo(r, S.heavyArmed); ({ pts, hit } = simPath(sol.phi, sol.v, S.heavyArmed, true)); }
+  const reached = r.kind === 'bin' ? hit === 'bin' : r.kind === 'head' ? hit === 'head' : hit === 'floor' || hit === 'bin';
+  const blocked = !!drag && !reached && (hit === 'obst' || hit === 'prop' || hit === 'boss' || hit === 'head');
+  const col = blocked ? AIM_COL.bad : r.locked ? AIM_COL.lock : r.kind === 'floor' ? AIM_COL.floor : reached || !drag ? AIM_COL[r.kind] : AIM_COL.dim;
+  // thin arc up to the reticle, or up to whatever stops it
+  if (drag) {
+    ctx.fillStyle = col; ctx.globalAlpha = .75;
+    for (let i = 10; i < pts.length; i += 12) { const q = P(pts[i][0], pts[i][1], pts[i][2]); ctx.beginPath(); ctx.arc(q[0], q[1], clamp(.018 * q[2], 1.5, 5), 0, 7); ctx.fill(); }
+    ctx.globalAlpha = 1;
   }
-  const sol = drag && plannedThrow();
-  if (!sol) return;
-  // the dotted path runs exactly as far as the ball would fly: it stops at the obstacle, the boss, a prop, the bin or the floor
-  const { pts, land, hit } = simPath(sol.phi, sol.v, S.heavyArmed, true);
-  ctx.fillStyle = lock ? 'rgba(95,214,255,.95)' : 'rgba(255,255,255,.85)';
-  for (let i = 12; i < pts.length; i += 14) { const q = P(pts[i][0], pts[i][1], pts[i][2]); ctx.beginPath(); ctx.arc(q[0], q[1], Math.max(2, .028 * q[2]), 0, 7); ctx.fill(); }
-  // the last dot shows the point of impact when something is in the way
-  if (hit === 'obst' || hit === 'boss' || hit === 'prop') {
-    const e = pts[pts.length - 1], q = P(e[0], e[1], e[2]);
-    ctx.fillStyle = '#ff5d6c'; ctx.beginPath(); ctx.arc(q[0], q[1], Math.max(4, .045 * q[2]), 0, 7); ctx.fill();
+  // the reticle itself, at the exact point the paper will reach
+  if (r.kind === 'head') {
+    const q = P(r.x, r.y, r.z), R = Math.max(14, .22 * q[2]) * pulse;
+    ctx.strokeStyle = col; ctx.lineWidth = 3; ctx.beginPath(); ctx.arc(q[0], q[1], R, 0, 7); ctx.stroke();
+    ctx.beginPath();
+    for (const [dx, dy] of [[1, 0], [-1, 0], [0, 1], [0, -1]]) { ctx.moveTo(q[0] + dx * R * .6, q[1] + dy * R * .6); ctx.lineTo(q[0] + dx * R * 1.35, q[1] + dy * R * 1.35); }
+    ctx.stroke();
+    if (reached) {
+      ctx.font = `800 ${Math.round(Math.max(12, .11 * q[2]))}px 'Russo One','Arial Black',sans-serif`;
+      ctx.textAlign = 'center'; ctx.lineWidth = 4; ctx.strokeStyle = 'rgba(16,18,38,.85)'; ctx.fillStyle = AIM_COL.head;
+      const tw = ctx.measureText(L.head).width, tx = clamp(q[0], tw / 2 + 10, W - tw / 2 - 10); // keep the label on screen
+      ctx.strokeText(L.head, tx, q[1] - R * 1.55); ctx.fillText(L.head, tx, q[1] - R * 1.55);
+    }
+  } else {
+    const R = (r.locked ? BIN_R + .05 : .16) * pulse, gy = r.kind === 'floor' ? .01 : r.y + .01; // floor reticle lies on the floor
+    ring3(r.x, gy, r.z, R, col, 3);
+    ring3(r.x, gy, r.z, .045, col, 2.5);
+    cross3(r.x, gy, r.z, R, col, 2.5);
   }
-  // landing ring only with aim lock
-  if (lock && land) { const good = inBin(land); ring3(land.x, BIN_H + .01, land.z, .1, good ? '#7dff8a' : 'rgba(255,255,255,.9)', good ? 4 : 2.5); }
+  // something in the way: a red cross where the paper will hit it
+  if (blocked) {
+    const e = pts[pts.length - 1], q = P(e[0], e[1], e[2]), k = Math.max(7, .05 * q[2]);
+    ctx.strokeStyle = 'rgba(16,18,38,.8)'; ctx.lineWidth = 6; ctx.beginPath(); ctx.moveTo(q[0] - k, q[1] - k); ctx.lineTo(q[0] + k, q[1] + k); ctx.moveTo(q[0] + k, q[1] - k); ctx.lineTo(q[0] - k, q[1] + k); ctx.stroke();
+    ctx.strokeStyle = AIM_COL.bad; ctx.lineWidth = 3.5; ctx.stroke();
+  }
 }
 function drawWindStreaks(dt) {
   const w = effWind();
@@ -1112,7 +1234,8 @@ function update(dt) {
   S.time += dt;
   S.shake = Math.max(0, S.shake - dt);
   S.lock = Math.max(0, S.lock - dt);
-  if (S.eff.freeze <= 0) S.obst.t += dt * diff();
+  if (S.eff.freeze <= 0) { S.obst.t += dt * diff(); S.bin.ph += dt * binW(); }
+  S.bin.x = binXAt(0);
   if (S.env) { const e = S.env; e.z = (S.obst.z + S.bin.z) / 2; e.x = Math.sin(S.time * .9 + e.ph) * 1.4; e.y = yAt(e.z) + .1; }
   updateBoss(dt); updateIncoming(dt);
   const sub = 4;
@@ -1130,13 +1253,19 @@ const canThrow = () => S.mode === 'play' && !paused && !S.balls.length && !S.bos
 cv.addEventListener('pointerdown', e => {
   ac();
   if (!canThrow()) return;
-  drag = { x0: e.clientX, y0: e.clientY, x: e.clientX, y: e.clientY, id: e.pointerId };
+  drag = { t0: S.time, x0: e.clientX, y0: e.clientY, x: e.clientX, y: e.clientY, id: e.pointerId, rel: e.pointerType !== 'mouse' };
+  if (drag.rel) { // the reticle starts where the last throw went, or a little short of the bin straight ahead
+    const a = lastAim || { x: 0, z: S.bin.z - 1.1 };
+    drag.wx = a.x; drag.wz = a.z;
+  }
   try { cv.setPointerCapture(e.pointerId); } catch (er) {}
 });
 cv.addEventListener('pointermove', e => { if (drag && e.pointerId === drag.id) { drag.x = e.clientX; drag.y = e.clientY; } });
 const endDrag = e => {
   if (!drag || e.pointerId !== drag.id) return;
-  const sol = plannedThrow(); drag = null;
+  const sol = plannedThrow();
+  if (!aimLock()) { const a = rawAim(drag); lastAim = { x: a.x, z: a.z }; }
+  drag = null;
   if (!canThrow() || !sol) return;
   throwBall(sol.phi, sol.v);
 };
